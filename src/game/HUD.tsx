@@ -1,4 +1,6 @@
 import { ATLAS_COLS, HOTBAR } from "./blocks";
+import { touch, isTouchDevice } from "./touch";
+import { emit, ui as uiState } from "./state";
 import { getGame, newWorld, respawn, saveGame, useUI, MAX_HEALTH } from "./state";
 
 function Icon({ tile, url, size = 36 }: { tile: number; url: string; size?: number }) {
@@ -28,7 +30,14 @@ export function HUD() {
   const ui = useUI();
   const item = HOTBAR[ui.selected]!;
   const isNight = Math.sin(ui.time * Math.PI * 2) < -0.1;
-  const lock = () => getGame().controls?.lock();
+  const lock = () => {
+    if (isTouchDevice()) {
+      touch.enabled = true;
+      uiState.locked = true;
+      emit();
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else getGame().controls?.lock();
+  };
 
   return (
     <div className="dark pointer-events-none fixed inset-0 z-10 font-pixel text-foreground">
@@ -65,7 +74,8 @@ export function HUD() {
           {HOTBAR.map((it, i) => (
             <div
               key={i}
-              className={`relative flex h-14 w-14 items-center justify-center rounded border-2 ${
+              onPointerDown={() => { uiState.selected = i; emit(); }}
+              className={`pointer-events-auto relative flex h-10 w-10 sm:h-14 sm:w-14 items-center justify-center rounded border-2 ${
                 i === ui.selected ? "border-foreground bg-foreground/15" : "border-border"
               }`}
             >
@@ -86,7 +96,7 @@ export function HUD() {
             <h1 className="text-5xl leading-none tracking-wide text-primary">VOXELCRAFT</h1>
             <p className="mt-2 text-lg text-muted-foreground">Survive the night. Build anything.</p>
             <button onClick={lock} className="mt-5 w-full rounded-md bg-primary py-3 text-2xl text-primary-foreground hover:opacity-90">
-              Click to play
+              {isTouchDevice() ? "Tap to play" : "Click to play"}
             </button>
             <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-0.5 text-left text-lg">
               <span className="text-muted-foreground">WASD</span><span>Move</span>
@@ -96,6 +106,7 @@ export function HUD() {
               <span className="text-muted-foreground">Right click</span><span>Place block</span>
               <span className="text-muted-foreground">1–9 / wheel</span><span>Select item</span>
               <span className="text-muted-foreground">Esc</span><span>Pause</span>
+              <span className="text-muted-foreground">Mobile</span><span>Left: move · Right: look</span>
             </div>
             <p className="mt-3 text-base text-muted-foreground">
               Use the right tool to mine faster. Zombies come out at night.

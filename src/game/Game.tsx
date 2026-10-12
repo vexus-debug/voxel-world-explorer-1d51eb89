@@ -6,6 +6,9 @@ import { BLOCKS, HOTBAR, drawAtlas } from "./blocks";
 import { CH, buildChunkGeometry, moveEntity, raycast, collides, type World } from "./world";
 import { damage, emit, getGame, saveGame, ui, MAX_HEALTH, type Zombie } from "./state";
 import { HUD } from "./HUD";
+import { touch } from "./touch";
+import { TouchControls } from "./TouchControls";
+import { useUI } from "./state";
 
 const RADIUS = 4;
 const DAY_LENGTH = 480; // seconds per full day
@@ -249,9 +252,9 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
       if (e.code === "Space" && ui.locked) e.preventDefault();
     };
     const ku = (e: KeyboardEvent) => (keys.current[e.code] = false);
-    const md = (e: MouseEvent) => {
+    const primary = () => {
       if (!ui.locked || ui.dead) return;
-      if (e.button === 0) {
+      {
         // attack zombies first
         camera.getWorldDirection(dir);
         const eye = camera.position;
@@ -273,16 +276,23 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
           return;
         }
         breaking.current = true;
-      } else if (e.button === 2) {
-        place();
       }
     };
+    const primaryUp = () => {
+      breaking.current = false;
+      ui.breakProgress = 0;
+      emit();
+    };
+    touch.primaryDown = primary;
+    touch.primaryUp = primaryUp;
+    touch.place = () => { if (ui.locked && !ui.dead) place(); };
+    const md = (e: MouseEvent) => {
+      if (touch.enabled || !ui.locked || ui.dead) return;
+      if (e.button === 0) primary();
+      else if (e.button === 2) place();
+    };
     const mu = (e: MouseEvent) => {
-      if (e.button === 0) {
-        breaking.current = false;
-        ui.breakProgress = 0;
-        emit();
-      }
+      if (e.button === 0 && !touch.enabled) primaryUp();
     };
     const wheel = (e: WheelEvent) => {
       if (!ui.locked) return;
@@ -327,6 +337,17 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
     const k = keys.current;
     const active = ui.locked && !ui.dead;
 
+    // touch look
+    if (touch.lookDX || touch.lookDY) {
+      if (active) {
+        const eu = new THREE.Euler(0, 0, 0, "YXZ").setFromQuaternion(camera.quaternion);
+        eu.y -= touch.lookDX * 0.005;
+        eu.x = Math.max(-Math.PI / 2 + 0.01, Math.min(Math.PI / 2 - 0.01, eu.x - touch.lookDY * 0.005));
+        camera.quaternion.setFromEuler(eu);
+      }
+      touch.lookDX = touch.lookDY = 0;
+    }
+
     // movement
     camera.getWorldDirection(dir);
     const fwd = new THREE.Vector3(dir.x, 0, dir.z).normalize();
@@ -337,12 +358,15 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
       if (k["KeyS"]) wish.sub(fwd);
       if (k["KeyD"]) wish.add(right);
       if (k["KeyA"]) wish.sub(right);
+      if (touch.moveX || touch.moveY) wish.addScaledVector(fwd, touch.moveY).addScaledVector(right, touch.moveX);
     }
-    if (wish.lengthSq()) wish.normalize().multiplyScalar(k["ShiftLeft"] ? 6.2 : 4.3);
+    const mag = Math.min(1, wish.length());
+    if (mag > 0.05) wish.normalize().multiplyScalar((k["ShiftLeft"] || touch.sprint ? 6.2 : 4.3) * (touch.enabled ? mag : 1));
+    else wish.set(0, 0, 0);
     const blend = 1 - Math.exp(-(onGround.current ? 14 : 3) * dt);
     g.vel.x += (wish.x - g.vel.x) * blend;
     g.vel.z += (wish.z - g.vel.z) * blend;
-    if (active && k["Space"] && onGround.current) g.vel.y = 8.6;
+    if (active && (k["Space"] || touch.jump) && onGround.current) g.vel.y = 8.6;
     g.vel.y = Math.max(-50, g.vel.y - 28 * dt);
     const res = moveEntity(g.world, g.pos, g.vel, dt, 0.3, 1.8);
     onGround.current = res.onGround;
@@ -436,6 +460,7 @@ function Scene() {
 
 export function Game() {
   const g = getGame();
+  const ui2 = useUI();
   useEffect(() => {
     const id = setInterval(saveGame, 5000);
     window.addEventListener("beforeunload", saveGame);
@@ -445,7 +470,7 @@ export function Game() {
     };
   }, []);
   return (
-    <div className="fixed inset-0 select-none">
+    <div className="fixed inset-0 select-none touch-none">
       <Canvas dpr={[1, 1.5]} camera={{ fov: 75, near: 0.05, far: 300, position: [g.pos.x, g.pos.y + 1.62, g.pos.z] }}>
         <Scene />
         <PointerLockControls
@@ -465,6 +490,7 @@ export function Game() {
         />
       </Canvas>
       <HUD />
+      {ui2.locked && !ui2.dead && touch.enabled && <TouchControls />}
     </div>
   );
 }
