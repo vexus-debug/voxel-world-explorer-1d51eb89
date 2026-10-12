@@ -143,6 +143,9 @@ const FACES = [
   { d: [0, 0, 1], s: 0.65, c: [[0, 0, 1, 0, 0], [1, 0, 1, 1, 0], [0, 1, 1, 0, 1], [1, 1, 1, 1, 1]] },
 ];
 
+const AO = [1, 0.78, 0.6, 0.45];
+const solid = (id: number) => (id !== 0 && !isTransparent(id) ? 1 : 0);
+
 export function buildChunkGeometry(world: World, cx: number, cz: number) {
   const chunk = world.getChunk(cx, cz);
   const pos: number[] = [], uv: number[] = [], col: number[] = [], ind: number[] = [];
@@ -165,14 +168,33 @@ export function buildChunkGeometry(world: World, cx: number, cz: number) {
           const tile = f === 3 ? def.tiles[0] : f === 2 ? def.tiles[2] : def.tiles[1];
           const tc = tile % ATLAS_COLS, tr = Math.floor(tile / ATLAS_COLS);
           const base = pos.length / 3;
+          const ao: number[] = [];
+          for (const c of F.c) {
+            // vertex ambient occlusion: sample the 3 neighbours around this corner on the face's outer side
+            const sx = c[0] * 2 - 1, sy = c[1] * 2 - 1, sz = c[2] * 2 - 1;
+            const ax = F.d[0] ? 0 : sx, ay = F.d[1] ? 0 : sy, az = F.d[2] ? 0 : sz;
+            const bx = ox + nx, by = ny, bz = oz + nz;
+            // two tangent axes
+            const t1 = F.d[0] ? [0, ay, 0] : [ax, 0, 0];
+            const t2 = F.d[2] ? [0, ay, 0] : [0, 0, az];
+            const s1 = solid(world.get(bx + t1[0], by + t1[1], bz + t1[2]));
+            const s2 = solid(world.get(bx + t2[0], by + t2[1], bz + t2[2]));
+            const sc = solid(world.get(bx + t1[0] + t2[0], by + t1[1] + t2[1], bz + t1[2] + t2[2]));
+            const occ = s1 && s2 ? 3 : s1 + s2 + sc;
+            ao.push(AO[occ]);
+          }
+          let k = 0;
           for (const c of F.c) {
             pos.push(ox + x + c[0], y + c[1], oz + z + c[2]);
             const u = (tc + (c[3] ? 1 - eps : eps)) / ATLAS_COLS;
             const v = 1 - (tr + 1 - (c[4] ? 1 - eps : eps)) / ATLAS_COLS;
             uv.push(u, v);
-            col.push(F.s, F.s, F.s);
+            const l = F.s * ao[k++];
+            col.push(l, l, l);
           }
-          ind.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+          // flip quad diagonal to avoid anisotropic AO artifacts
+          if (ao[0] + ao[3] < ao[1] + ao[2]) ind.push(base, base + 1, base + 3, base, base + 3, base + 2);
+          else ind.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
         }
       }
   const g = new THREE.BufferGeometry();
@@ -180,6 +202,7 @@ export function buildChunkGeometry(world: World, cx: number, cz: number) {
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(ind);
+  g.computeVertexNormals();
   g.computeBoundingSphere();
   return g;
 }
