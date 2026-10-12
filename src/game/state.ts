@@ -25,6 +25,14 @@ export function emit() {
   version++;
   listeners.forEach((l) => l());
 }
+// For per-frame updates: re-render the HUD at most ~12 times a second.
+let lastEmit = 0;
+export function emitThrottled() {
+  const now = performance.now();
+  if (now - lastEmit < 80) return;
+  lastEmit = now;
+  emit();
+}
 export function useUI() {
   useSyncExternalStore(
     (l) => (listeners.add(l), () => listeners.delete(l)),
@@ -80,19 +88,23 @@ export function getGame(): Game {
 
 export function saveGame() {
   if (!game) return;
-  localStorage.setItem(
-    SAVE_KEY,
-    JSON.stringify({
-      seed: game.world.seed,
-      edits: game.world.edits,
-      pos: game.pos.toArray(),
-      health: ui.health,
-      counts: ui.counts,
-      time: ui.time,
-      selected: ui.selected,
-    }),
-  );
-  ui.lastSaved = Date.now();
+  try {
+    localStorage.setItem(
+      SAVE_KEY,
+      JSON.stringify({
+        seed: game.world.seed,
+        edits: game.world.edits,
+        pos: game.pos.toArray(),
+        health: ui.health,
+        counts: ui.counts,
+        time: ui.time,
+        selected: ui.selected,
+      }),
+    );
+    ui.lastSaved = Date.now();
+  } catch (e) {
+    console.warn("Save failed", e);
+  }
   emit();
 }
 
