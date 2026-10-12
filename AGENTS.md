@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - Game logic lives in src/game (world data/meshing/physics in world.ts, shared mutable state + HUD store in state.ts); the game route is ssr:false because WebGL and localStorage are browser-only.
+- Keep TanStack development source annotations out of src/game, because React Three Fiber forwards DOM-style JSX attributes to Three.js objects and crashes on unknown properties.
