@@ -189,7 +189,7 @@ export function buildChunkGeometry(world: World, cx: number, cz: number) {
             const u = (tc + (c[3] ? 1 - eps : eps)) / ATLAS_COLS;
             const v = 1 - (tr + 1 - (c[4] ? 1 - eps : eps)) / ATLAS_COLS;
             uv.push(u, v);
-            const l = F.s * ao[k++];
+            const l = (0.82 + 0.18 * F.s) * ao[k++];
             col.push(l, l, l);
           }
           // flip quad diagonal to avoid anisotropic AO artifacts

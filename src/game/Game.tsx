@@ -11,6 +11,8 @@ import { TouchControls } from "./TouchControls";
 import { useUI } from "./state";
 
 const RADIUS = isTouchDevice() ? 3 : 4;
+const SHADOW_RES = isTouchDevice() ? 1024 : 2048;
+const WHITE = new THREE.Color(1, 1, 1);
 const DAY_LENGTH = 480; // seconds per full day
 const REACH = 5;
 
@@ -36,7 +38,7 @@ function ChunkMesh({ cx, cz, world, material }: { cx: number; cz: number; world:
     old.dispose();
   });
   useEffect(() => () => ref.current?.geometry.dispose(), []);
-  return <mesh ref={ref} material={material} />;
+  return <mesh ref={ref} material={material} castShadow receiveShadow />;
 }
 
 function Chunks({ material }: { material: THREE.Material }) {
@@ -63,7 +65,7 @@ function Chunks({ material }: { material: THREE.Material }) {
 
 function Sky() {
   const { scene } = useThree();
-  const amb = useRef<THREE.AmbientLight>(null);
+  const amb = useRef<THREE.HemisphereLight>(null);
   const sun = useRef<THREE.DirectionalLight>(null);
   const sunMesh = useRef<THREE.Mesh>(null);
   const moonMesh = useRef<THREE.Mesh>(null);
@@ -83,10 +85,21 @@ function Sky() {
     col.copy(night).lerp(day, light).lerp(dusk, duskAmt * light + duskAmt * 0.3);
     scene.background = col;
     if (scene.fog) (scene.fog as THREE.Fog).color.copy(col);
-    if (amb.current) amb.current.intensity = 0.25 + 0.75 * light;
+    if (amb.current) {
+      amb.current.intensity = 0.25 + 0.55 * light;
+      amb.current.color.copy(col).lerp(WHITE, 0.4);
+    }
     if (sun.current) {
-      sun.current.intensity = 1.6 * light;
-      sun.current.position.set(g.pos.x + Math.cos(a) * 50, g.pos.y + sy * 50, g.pos.z + 20);
+      const s = sun.current;
+      s.intensity = 2.4 * light;
+      // warm low sun at dawn/dusk, neutral at noon
+      s.color.setRGB(1, 0.78 + 0.2 * Math.min(1, sy * 2), 0.6 + 0.35 * Math.min(1, sy * 2));
+      // snap to texel-ish grid to reduce shadow shimmer while walking
+      const px = Math.round(g.pos.x), py = Math.round(g.pos.y), pz = Math.round(g.pos.z);
+      s.position.set(px + Math.cos(a) * 40, py + Math.max(sy, 0.15) * 50, pz + 15);
+      s.target.position.set(px, py, pz);
+      s.target.updateMatrixWorld();
+      s.castShadow = light > 0.05;
     }
     sunMesh.current?.position.set(g.pos.x + Math.cos(a) * 120, g.pos.y + sy * 120, g.pos.z + 30);
     moonMesh.current?.position.set(g.pos.x - Math.cos(a) * 120, g.pos.y - sy * 120, g.pos.z - 30);
@@ -100,9 +113,23 @@ function Sky() {
   });
   return (
     <>
-      <fog attach="fog" args={["#8fc4ec", 30, RADIUS * CH - 6]} />
-      <ambientLight ref={amb} intensity={0.8} />
-      <directionalLight ref={sun} intensity={1.2} />
+      <fog attach="fog" args={["#8fc4ec", 18, RADIUS * CH - 4]} />
+      <hemisphereLight ref={amb} args={["#bcd8f0", "#5a4a32", 0.7]} />
+      <directionalLight
+        ref={sun}
+        intensity={2}
+        castShadow
+        shadow-mapSize-width={SHADOW_RES}
+        shadow-mapSize-height={SHADOW_RES}
+        shadow-camera-left={-36}
+        shadow-camera-right={36}
+        shadow-camera-top={36}
+        shadow-camera-bottom={-36}
+        shadow-camera-near={1}
+        shadow-camera-far={140}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.04}
+      />
       <mesh ref={sunMesh}>
         <planeGeometry args={[14, 14]} />
         <meshBasicMaterial color="#fff6c4" fog={false} />
@@ -473,7 +500,8 @@ export function Game() {
     <div className="fixed inset-0 select-none touch-none">
       <Canvas
         dpr={touch.enabled || isTouchDevice() ? 1 : [1, 1.5]}
-        gl={{ antialias: !isTouchDevice(), powerPreference: "high-performance" }}
+        shadows={{ type: THREE.PCFSoftShadowMap }}
+        gl={{ antialias: !isTouchDevice(), powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
         onCreated={({ gl }) => {
           const el = gl.domElement;
           el.addEventListener("webglcontextlost", (e) => {
