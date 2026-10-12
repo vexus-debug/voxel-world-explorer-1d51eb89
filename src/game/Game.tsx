@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { BLOCKS, HOTBAR, drawAtlas } from "./blocks";
 import { CH, buildChunkGeometry, moveEntity, raycast, collides, type World } from "./world";
-import { damage, emit, getGame, saveGame, ui, MAX_HEALTH, type Zombie } from "./state";
+import { damage, emit, emitThrottled, getGame, saveGame, ui, MAX_HEALTH, type Zombie } from "./state";
 import { HUD } from "./HUD";
-import { touch } from "./touch";
+import { touch, isTouchDevice } from "./touch";
 import { TouchControls } from "./TouchControls";
 import { useUI } from "./state";
 
-const RADIUS = 4;
+const RADIUS = isTouchDevice() ? 3 : 4;
 const DAY_LENGTH = 480; // seconds per full day
 const REACH = 5;
 
@@ -391,7 +391,7 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
     }
     if (ui.hurt > 0) {
       ui.hurt = Math.max(0, ui.hurt - dt * 2.5);
-      emit();
+      if (ui.hurt === 0) emit(); else emitThrottled();
     }
 
     camera.position.set(g.pos.x, g.pos.y + 1.62, g.pos.z);
@@ -421,8 +421,8 @@ function Player({ zt }: { zt: React.MutableRefObject<ZombieTarget> }) {
         if (def.drop) ui.counts[def.drop] = (ui.counts[def.drop] ?? 0) + 1;
         ui.breakProgress = 0;
         breakKey.current = "";
-      }
-      emit();
+        emit();
+      } else emitThrottled();
     } else if (ui.breakProgress) {
       ui.breakProgress = 0;
       emit();
@@ -471,7 +471,18 @@ export function Game() {
   }, []);
   return (
     <div className="fixed inset-0 select-none touch-none">
-      <Canvas dpr={[1, 1.5]} camera={{ fov: 75, near: 0.05, far: 300, position: [g.pos.x, g.pos.y + 1.62, g.pos.z] }}>
+      <Canvas
+        dpr={touch.enabled || isTouchDevice() ? 1 : [1, 1.5]}
+        gl={{ antialias: !isTouchDevice(), powerPreference: "high-performance" }}
+        onCreated={({ gl }) => {
+          const el = gl.domElement;
+          el.addEventListener("webglcontextlost", (e) => {
+            e.preventDefault();
+            saveGame();
+            setTimeout(() => window.location.reload(), 300);
+          });
+        }}
+        camera={{ fov: 75, near: 0.05, far: 300, position: [g.pos.x, g.pos.y + 1.62, g.pos.z] }}>
         <Scene />
         <PointerLockControls
           selector="#__no_auto_lock"
