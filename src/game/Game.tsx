@@ -500,7 +500,7 @@ export function Game() {
     <div className="fixed inset-0 select-none touch-none">
       <Canvas
         dpr={touch.enabled || isTouchDevice() ? 1 : [1, 1.5]}
-        shadows={{ type: THREE.PCFSoftShadowMap }}
+        shadows={{ type: THREE.PCFShadowMap }}
         gl={{ antialias: !isTouchDevice(), powerPreference: "high-performance", toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.1 }}
         onCreated={({ gl }) => {
           const el = gl.domElement;
